@@ -10,8 +10,8 @@ Guidelines to follow when writing X post to guarantee virality.
 **If any of the above is not achieved, iteratively finetune or rewrite till it is achieved.**
 
 ### Writing format
-**Hook**: A one line sentence.
-**Body**: The remaining contents of the post.
+**Hook**: A creativily written one line sentence that instantly hooks the reader.
+**Body**: The main contents of the post.
 
 """
 _The Hook_
@@ -20,8 +20,8 @@ _The body_
 """
 
 ### Content
-Ensure the contents of the post are up-to-date.
+Ensure information of the post are up-to-date.
 Perform sufficient research where necessary.
 
 ### Images
-Give few words description that best describes the post, that can be passed as search query to find the best image that fits the post. To be passed into a tool call.
+Give few keywords that best describes the post, that can be passed as search query to find the best image that fits the post.
