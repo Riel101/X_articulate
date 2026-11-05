@@ -5,7 +5,6 @@ Guidelines to follow when writing X post to guarantee virality.
 -The hook must make the reader curious while the post spikes and/or satisfies curiousity.
 -Must be easy to read, includes proper spacing and use of simpler words that are easier to understand.
 -Must not be verbose, be concise.
--280 characters max.
 
 **If any of the above is not achieved, iteratively finetune or rewrite till it is achieved.**
 
@@ -23,5 +22,5 @@ _The body_
 Ensure information of the post are up-to-date.
 Perform sufficient research where necessary.
 
-### Images
-Give few keywords that best describes the post, that can be passed as search query to find the best image that fits the post.
+<!-- ### Images
+Give few keywords that best describes the post, that can be passed as search query to find the best image that fits the post. -->
