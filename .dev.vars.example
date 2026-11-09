@@ -6,9 +6,16 @@ MCP_OWNER_ID=owner_local
 MCP_SCOPES=research generate metrics
 # Browser-based MCP clients only; native/server-side agents need no Origin setting.
 # MCP_ALLOWED_ORIGINS=https://your-agent.example
+GENERATION_MODE=client
+# Optional, only for explicitly selected GENERATION_MODE=server.
 OPENAI_API_KEY=
 TAVILY_API_KEY=
 ZERNIO_API_KEY=
 # Bind the token to ONE connected X account; never accept account IDs from clients.
 ZERNIO_ACCOUNT_ID=
 X_USERNAME=
+
+# NVIDIA server generation (set GENERATION_MODE=server)
+MODEL_PROVIDER=nvidia
+NVIDIA_MODEL=nvidia/nemotron-3-ultra-550b-a55b
+NVIDIA_API_KEY=

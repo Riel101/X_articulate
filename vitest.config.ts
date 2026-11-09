@@ -11,6 +11,8 @@ export default defineConfig(async () => ({
           MCP_OWNER_ID: "owner_test",
           MCP_ALLOWED_ORIGINS: "https://agent.example",
           MCP_PUBLIC_URL: "https://localhost/mcp",
+          GENERATION_MODE: "server",
+          MODEL_PROVIDER: "openai",
           OPENAI_MODEL: "test-model",
           OPENAI_API_KEY: "test-key",
           ZERNIO_API_KEY: "test-zernio",

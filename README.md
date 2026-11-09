@@ -1,15 +1,24 @@
+## NVIDIA generation configuration
+
+Production uses server generation with NVIDIA `nvidia/nemotron-3-ultra-550b-a55b` at `https://integrate.api.nvidia.com/v1/chat/completions`. Set the Worker secret with `npx wrangler secret put NVIDIA_API_KEY`. `MODEL_PROVIDER=nvidia`, `NVIDIA_MODEL=nvidia/nemotron-3-ultra-550b-a55b`, and `GENERATION_MODE=server` select this backend. JSON output is validated against the application schema; incomplete or invalid output fails safely. No OpenAI key is used by this backend.
+
+Set `GENERATION_MODE=client` to use the connected agent's model instead. The client workflow described below remains available in that mode.
+
 # X Content Intelligence MCP
 
 A private, authenticated remote MCP server for researching and writing original X posts, then learning from the performance of posts you manually publish. Built with TypeScript, Cloudflare Workers, D1, KV, the official MCP SDK and Cloudflare Agents. [BUILD.md](BUILD.md) is the product blueprint.
 
 ## What it does
 
-- `create_post`: topic → attributed research → four distinct candidates → heuristic evaluation → up to two repairs → one separately copyable post, analytics and saved draft ID.
+- `create_post`: prepare a saved research brief and historical insights. The connected MCP client uses its own model to write, assess and revise the post.
+- `finalize_post`: check the client-written post against X length and the saved preferences, then persist its text, client assessment, sources and draft ID.
 - `research_topic`: inspect normalized Tavily web and Zernio recent X search results.
-- `evaluate_post`: compare up to four candidates using the same versioned rubric and hard gates.
+- `evaluate_post`: deterministically check up to four candidates for X weighted length and required/excluded phrases. Client mode returns no invented quality scores; the client performs its own rubric assessment.
 - `register_published_post`: verify a manually published post against the configured connected X account and save its actual text.
 - `get_post_performance`: fetch authorized metrics, save a deduplicated snapshot, refresh learning summaries, then return observed performance.
 - `search_reference_bank` and `get_learning_report`: account-scoped comparisons using one observation per post in the same age window.
+
+**Production uses NVIDIA server generation.** You can select `GENERATION_MODE=client` to let your connected MCP client perform the writing using its own model access. The server does not access your subscription or make model API calls in this mode. Research and analytics providers may still charge for their own APIs. `GENERATION_MODE=server` uses the configured model provider (`nvidia` or `openai`).
 
 Posts use X's weighted character rules, including shortened URLs and emoji. Missing metrics stay `null`; pending sync never creates a zero observation. Historical associations require 30 comparable measured posts, and only break quality-score ties within two points. Scores are heuristic assessments, never predictions of virality. There is no posting, scheduling, reply or engagement tool.
 
@@ -24,15 +33,18 @@ npm run db:migrate
 npm run dev
 ```
 
-Fill in `.dev.vars` locally. Never commit real credentials.
+Fill in `.dev.vars` locally. Never commit real credentials. The deployed configuration selects `server`; use `GENERATION_MODE=client` to avoid separate model API usage. After upgrading an existing MCP connection, refresh its tools to discover `finalize_post` and the updated server instructions.
 
 | Setting             | Purpose                                                                   |
 | ------------------- | ------------------------------------------------------------------------- |
 | `MCP_AUTH_TOKEN`    | Owner approval key (32+ characters); also works for direct bearer clients |
 | `MCP_OWNER_ID`      | Stable owner ID; storage identity comes from this binding                 |
 | `MCP_SCOPES`        | Space-separated `research generate metrics` permissions                   |
-| `OPENAI_API_KEY`    | OpenAI Responses API credential                                           |
-| `OPENAI_MODEL`      | Structured-output-capable model; configurable in Wrangler                 |
+| `NVIDIA_API_KEY`    | Required for NVIDIA server generation                                     |
+| `NVIDIA_MODEL`      | NVIDIA model ID; production uses `nvidia/nemotron-3-ultra-550b-a55b`      |
+| `MODEL_PROVIDER`    | Server provider: `nvidia` or `openai`                                     |
+| `OPENAI_API_KEY`    | Optional; used only by the OpenAI server provider                         |
+| `OPENAI_MODEL`      | Optional server-mode model; ignored in client mode                        |
 | `TAVILY_API_KEY`    | Web research; optional for evergreen-only development                     |
 | `ZERNIO_API_KEY`    | Recent X search, owned publication verification and analytics             |
 | `ZERNIO_ACCOUNT_ID` | One connected and authorized X account                                    |
@@ -51,7 +63,7 @@ The server exposes standard MCP Streamable HTTP at `/mcp`. Any MCP-compatible ho
 
 Native/server-side MCP clients normally send no browser `Origin` and need no origin configuration. For browser-based MCP hosts, configure `MCP_ALLOWED_ORIGINS` as comma-separated exact origins, such as `https://agent.example,https://another-agent.example`. These origins receive CORS preflight support and can read the OAuth challenge. Unlisted browser origins are rejected; no vendor has a hardcoded exemption. Consent submissions always require the Worker's own origin. The current deployment enables ChatGPT's browser origin through configuration.
 
-If a host says tools are unavailable, verify that its server details list all seven tools, refresh its tool definitions, and explicitly select/attach the server in that conversation. Check that `create_post` is enabled. A direct draft from the model is not a result from this server: successful creation returns a persisted `draft_id` and heuristic analytics.
+If a host says tools are unavailable, verify that its server details list all eight tools, refresh its tool definitions, and explicitly select/attach the server in that conversation. Check that `create_post` is enabled. A direct draft is not a saved server result: the client must call finalize_post and receive a persisted `draft_id` before claiming that the bank contains it.
 
 ## Connect ChatGPT
 
@@ -93,7 +105,35 @@ Example tool arguments:
 }
 ```
 
-Save the returned `draft_id`. Publish the `post_text` yourself, then call:
+In default client mode this returns `status: "client_drafting_required"`, a `brief_id`, research, preferences and drafting instructions. The MCP host should use its own model to write four original candidates, score/revise them with the supplied rubric, optionally call `evaluate_post` for deterministic checks, and then call:
+
+```json
+{
+  "brief_id": "brf_...",
+  "post_text": "Your chosen client-written post...",
+  "client_model": "optional host/model label",
+  "assessment": {
+    "dimension_scores": {
+      "relevance": 18,
+      "hook": 16,
+      "clarity": 14,
+      "value": 18,
+      "shareability": 12,
+      "discussion": 7
+    },
+    "strengths": ["Example client assessment"],
+    "caveats": [],
+    "factuality_reviewed": true,
+    "originality_reviewed": true,
+    "safety_reviewed": true
+  },
+  "claims": []
+}
+```
+
+The booleans are client attestations: review the text before setting them. Scores are supplied by the client, never independent server evaluation. Claim references must name real web source IDs from the stored brief; X discussion posts are not factual evidence. Finalization validates the exact text against the original saved constraints, rejects expired/foreign briefs, and preserves the client-generated provenance. Freshness-sensitive briefs expire after 15 minutes; evergreen briefs after 24 hours. A finalized brief replays the saved draft for identical inputs; different text requires a new brief.
+
+Save the `draft_id` returned by **finalize_post**. Publish its `post_text` yourself, then call:
 
 ```json
 {
@@ -102,7 +142,7 @@ Save the returned `draft_id`. Publish the `post_text` yourself, then call:
 }
 ```
 
-Call `get_post_performance` with the returned `published_post_id`. `refresh: false` reads the last stored observation; `true` fetches and learns. Zernio must be able to sync that externally published post for the connected account. If a native X ID cannot be looked up directly, analytics resolves it from up to two account-scoped pages for its publication date; posts beyond that bounded lookup return unavailable. Its analytics add-on, platform permissions, sync delays, availability and charges apply. Provider content takes precedence over user-reported text/time. Edited text receives its own heuristic evaluation; original draft scores are not attributed to it. Posts that cannot be verified are not admitted to the outcome bank.
+Call `get_post_performance` with the returned `published_post_id`. `refresh: false` reads the last stored observation; `true` fetches and learns. Zernio must be able to sync that externally published post for the connected account. If a native X ID cannot be looked up directly, analytics resolves it from up to two account-scoped pages for its publication date; posts beyond that bounded lookup return unavailable. Its analytics add-on, platform permissions, sync delays, availability and charges apply. Provider content takes precedence over user-reported text/time. Edited published text always gets its own deterministic content features. Client mode does not call a model to re-score it; explicit server mode adds a separate model evaluation. Original draft scores are never attributed to edited text. Posts that cannot be verified are not admitted to the outcome bank.
 
 ## Checks
 
@@ -129,7 +169,6 @@ For a new deployment, set the D1 and both KV IDs in `wrangler.jsonc` to your own
 ```sh
 npx wrangler secret put MCP_AUTH_TOKEN
 npx wrangler secret put MCP_OWNER_ID
-npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put TAVILY_API_KEY
 npx wrangler secret put ZERNIO_API_KEY
 npx wrangler secret put ZERNIO_ACCOUNT_ID
@@ -142,7 +181,7 @@ Connect clients to `https://<worker>.<subdomain>.workers.dev/mcp`. Custom domain
 
 ## Budgets and operations
 
-Generation is bounded to one research query per configured provider, four candidates, one batch evaluation and up to two revision/evaluation pairs. Each OpenAI response has a 2,200-output-token cap and 30-second deadline. Provider requests have short timeouts, bounded response sizes, and one retry for safe reads; model calls and external sync writes are not retried automatically. D1 locks prevent concurrent idempotency-key runs. A lock expires after four minutes following a crash. Reusing a key for different input is rejected.
+Default client mode makes no server-side model calls, including for evaluation or edited publication links. Explicit server mode requires `GENERATION_MODE=server`, `OPENAI_API_KEY` and `OPENAI_MODEL`; it is bounded to one research query per configured provider, four candidates, one batch evaluation and up to two revision/evaluation pairs. Each OpenAI response has a 2,200-output-token cap and 30-second deadline. Provider requests have short timeouts, bounded response sizes, and one retry for safe reads; model calls and external sync writes are not retried automatically. D1 locks prevent concurrent idempotency-key runs. A lock expires after four minutes following a crash. Reusing a key for different input is rejected.
 
 Tool usage is reserved atomically before provider work. D1 stores request ID, tool, status and duration without source payloads or secrets in logs. `cost_units` remains nullable: no invented dollar/token accounting. Configure actual spend limits/alerts in OpenAI, Tavily, Zernio and Cloudflare accounts. The application quota caps calls, not dollars. Monitor Worker request logs and `usage_events` for latency/failures; p50/p95 and live model calibration require actual traffic.
 
@@ -150,7 +189,7 @@ Reference-bank searches default an omitted audience to `general readers`. The re
 
 ## Data retention and deletion
 
-D1 is authoritative; public research cache entries expire after 15 minutes for current topics or 24 hours for evergreen topics. Account metrics are never cached in shared KV. Drafts, actual published text and snapshots remain until the owner requests deletion. Research snippets have a 30-day retention target and usage records 90 days. Run the maintenance command regularly:
+D1 is authoritative; drafting briefs include their owner, original preferences, source snapshot, expiry and final draft link; public research cache entries expire after 15 minutes for current topics or 24 hours for evergreen topics. Account metrics are never cached in shared KV. Drafts, actual published text and snapshots remain until the owner requests deletion. Research snippets have a 30-day retention target and usage records 90 days. Run the maintenance command regularly:
 
 ```sh
 node scripts/data.mjs prune owner_local --local

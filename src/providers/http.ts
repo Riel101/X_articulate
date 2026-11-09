@@ -5,11 +5,13 @@ export async function providerRequest(
   timeoutMs = 12000,
   retry = true,
 ): Promise<{ status: number; data: unknown }> {
+  const provider = new URL(url).hostname;
   for (let attempt = 0; attempt < (retry ? 2 : 1); attempt++) {
     try {
       const response = await fetch(url, {
         ...init,
-        redirect: "error",
+        // Workers supports manual/follow only. Never forward credentials to redirects.
+        redirect: "manual",
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (
@@ -31,8 +33,9 @@ export async function providerRequest(
         await response.body?.cancel();
         throw new AppError(
           response.status === 429 ? "RATE_LIMITED" : "PROVIDER_UNAVAILABLE",
-          "A provider rejected the request. Check server credentials, permissions, and quota.",
+          `${provider} rejected the request (HTTP ${response.status}). Check credentials, permissions, and quota.`,
           response.status === 429 || response.status >= 500,
+          { provider, http_status: response.status },
         );
       }
       // Bound response bytes before JSON parsing.
@@ -65,12 +68,49 @@ export async function providerRequest(
         data: JSON.parse(new TextDecoder().decode(bytes)),
       };
     } catch (error) {
+      let transportCause: string | undefined;
+      if (
+        provider === "integrate.api.nvidia.com" &&
+        !(error instanceof AppError)
+      ) {
+        const authorization =
+          new Headers(init.headers).get("Authorization") ?? "";
+        const secret = authorization.replace(/^Bearer /, "");
+        let cause =
+          error instanceof Error ? error.message : "Unknown network error";
+        if (authorization)
+          cause = cause.replaceAll(authorization, "[redacted]");
+        if (secret) cause = cause.replaceAll(secret, "[redacted]");
+        transportCause = cause.slice(0, 500);
+        console.warn("model_transport_failure", {
+          provider,
+          name: error instanceof Error ? error.name : "unknown",
+          cause,
+        });
+      }
       if (error instanceof AppError) throw error;
       if (attempt === (retry ? 1 : 0))
         throw new AppError(
           "PROVIDER_UNAVAILABLE",
-          "Provider timed out or returned an invalid response.",
+          error instanceof Error &&
+            (error.name === "TimeoutError" || error.name === "AbortError")
+            ? `${provider} timed out after ${timeoutMs / 1000} seconds.`
+            : error instanceof SyntaxError
+              ? `${provider} returned invalid JSON.`
+              : `${provider} could not be reached or its response was interrupted.`,
           true,
+          {
+            provider,
+            failure:
+              error instanceof Error &&
+              (error.name === "TimeoutError" || error.name === "AbortError")
+                ? "timeout"
+                : error instanceof SyntaxError
+                  ? "invalid_json"
+                  : "network",
+            timeout_ms: timeoutMs,
+            ...(transportCause ? { transport_cause: transportCause } : {}),
+          },
         );
     }
   }

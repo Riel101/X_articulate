@@ -17,6 +17,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await env.DB.batch(
     [
+      "drafting_briefs",
       "accounts",
       "drafts",
       "learning_summaries",

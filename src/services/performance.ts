@@ -73,17 +73,18 @@ export class PerformanceService {
         );
       const edited = verified.text !== draft.final_text;
       const postId = id("pub");
-      const actualEvaluation = edited
-        ? await new EvaluationService(new OpenAIProvider(this.env)).evaluate(
-            draft.topic,
-            [{ id: postId, text: verified.text }],
-            draft.audience,
-            "evaluate actual published text",
-            { must_include: [], avoid: [] },
-            [],
-            false,
-          )
-        : null;
+      const actualEvaluation =
+        edited && this.env.GENERATION_MODE === "server"
+          ? await new EvaluationService(new OpenAIProvider(this.env)).evaluate(
+              draft.topic,
+              [{ id: postId, text: verified.text }],
+              draft.audience,
+              "evaluate actual published text",
+              { must_include: [], avoid: [] },
+              [],
+              false,
+            )
+          : null;
       await this.env.DB.batch([
         this.env.DB.prepare(
           "INSERT INTO published_posts(id,draft_id,account_id,x_post_id,x_post_url,actual_text,actual_text_hash,features_json,published_at,edited_from_draft,verification,provider_post_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(account_id,x_post_id) DO NOTHING",
@@ -117,7 +118,9 @@ export class PerformanceService {
                 JSON.stringify(r.dimensions),
                 JSON.stringify(r.hard_gates),
                 RUBRIC,
-                this.env.OPENAI_MODEL,
+                (this.env.MODEL_PROVIDER === "nvidia"
+                  ? this.env.NVIDIA_MODEL
+                  : this.env.OPENAI_MODEL) ?? "unconfigured",
                 new Date().toISOString(),
               ),
             )

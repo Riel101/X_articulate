@@ -6,6 +6,9 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": { "enabled": true },
   "vars": {
+    "GENERATION_MODE": "server",
+    "MODEL_PROVIDER": "nvidia",
+    "NVIDIA_MODEL": "nvidia/nemotron-3-ultra-550b-a55b",
     "MCP_ALLOWED_ORIGINS": "https://chatgpt.com",
     "MCP_PUBLIC_URL": "https://x-content-intelligence-mcp.adeyemigabriel429.workers.dev/mcp",
     "OPENAI_MODEL": "gpt-4.1-mini",

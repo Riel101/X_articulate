@@ -6,7 +6,8 @@ import { features, RUBRIC, validatePost } from "../domain/post";
 import { OpenAIProvider, objectSchema } from "../providers/openai";
 import { BankRepository } from "../repositories/bank";
 import { EvaluationService } from "./evaluation";
-import { ResearchOrchestrator } from "./research";
+import { loadContext } from "./brief";
+import { ClientDraftingService } from "./client-drafting";
 const generation = z
   .object({
     candidates: z.array(candidateSchema).length(4),
@@ -35,7 +36,15 @@ export class CreatePostWorkflow {
     private env: Env,
     private bank: BankRepository,
   ) {}
-  async run(input: CreateInput, requestId: string) {
+  async run(
+    input: CreateInput,
+    requestId: string,
+  ): Promise<Record<string, unknown>> {
+    if (this.env.GENERATION_MODE !== "server")
+      return new ClientDraftingService(this.env, this.bank).prepare(
+        input,
+        requestId,
+      );
     const inputHash = await hash(
       JSON.stringify({ ...input, idempotency_key: undefined }),
     );
@@ -65,37 +74,11 @@ export class CreatePostWorkflow {
           return JSON.parse(replay.response_json) as Record<string, unknown>;
         }
       }
-      const [research, learning] = await Promise.all([
-        new ResearchOrchestrator(this.env).research(
-          input.topic,
-          input.current_information_required === "yes"
-            ? "recent"
-            : input.current_information_required === "no"
-              ? "evergreen"
-              : "auto",
-        ),
-        this.bank.insights(input.topic, input.audience),
-      ]);
-      if (research.status === "unavailable")
-        throw new AppError(
-          "RESEARCH_UNAVAILABLE",
-          "Current information could not be researched. Retry when a research provider is available.",
-          true,
-        );
-      if (
-        input.current_information_required === "yes" &&
-        !research.evidence.some(
-          (e) =>
-            e.kind === "web" &&
-            e.publishedAt &&
-            Date.now() - Date.parse(e.publishedAt) < 7 * 86400000,
-        )
-      )
-        throw new AppError(
-          "RESEARCH_UNAVAILABLE",
-          "No dated web evidence supports a current-information post. Retry with a narrower topic.",
-          true,
-        );
+      const { research, learning } = await loadContext(
+        this.env,
+        this.bank,
+        input,
+      );
       const model = new OpenAIProvider(this.env);
       const evaluator = new EvaluationService(model);
       const brief = {
@@ -222,6 +205,7 @@ export class CreatePostWorkflow {
       const draftId = id("drf");
       const now = new Date().toISOString();
       const response = {
+        status: "complete",
         draft_id: draftId,
         ready_to_copy: true,
         post_text: candidate.text,
@@ -288,7 +272,9 @@ export class CreatePostWorkflow {
               JSON.stringify(r.dimensions),
               JSON.stringify(r.hard_gates),
               RUBRIC,
-              this.env.OPENAI_MODEL,
+              (this.env.MODEL_PROVIDER === "nvidia"
+                ? this.env.NVIDIA_MODEL
+                : this.env.OPENAI_MODEL) ?? "unconfigured",
               now,
             ),
         ),

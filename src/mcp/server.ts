@@ -4,6 +4,7 @@ import type { Env, Identity } from "../config/env";
 import {
   bankSchema,
   createSchema,
+  finalizeSchema,
   evaluateSchema,
   performanceSchema,
   registerSchema,
@@ -17,31 +18,41 @@ import { CreatePostWorkflow } from "../services/create-post";
 import { EvaluationService } from "../services/evaluation";
 import { PerformanceService } from "../services/performance";
 import { ResearchOrchestrator } from "../services/research";
+import { ClientDraftingService } from "../services/client-drafting";
+import { validateClientCandidates } from "../services/client-evaluation";
 import { reserveUsage } from "./auth";
 // Output schemas require the important contract fields while permitting documented metadata.
 const outputSchemas = {
   create_post: z
     .object({
-      draft_id: z.string(),
+      status: z.enum(["client_drafting_required", "complete"]),
       ready_to_copy: z.boolean(),
+      brief_id: z.string().optional(),
+      draft_id: z.string().optional(),
+      post_text: z.string().optional(),
+      instructions: z.array(z.string()).optional(),
+    })
+    .passthrough(),
+  finalize_post: z
+    .object({
+      status: z.literal("complete"),
+      draft_id: z.string(),
+      ready_to_copy: z.literal(true),
       post_text: z.string(),
       pre_publication_analytics: z
         .object({
-          type: z.literal("heuristic_quality_assessment"),
+          type: z.literal("client_heuristic_quality_assessment"),
           quality_score: z.number(),
-          weighted_characters: z.number(),
-          character_limit: z.literal(280),
+          assessment_source: z.literal("client"),
         })
         .passthrough(),
-      research: z.object({ status: z.string() }).passthrough(),
-      learning: z
-        .object({ status: z.string(), comparable_post_count: z.number() })
+      validation: z
+        .object({
+          length: z.string(),
+          constraints: z.string(),
+          factuality: z.string(),
+        })
         .passthrough(),
-      validation: z.object({
-        length: z.string(),
-        factuality: z.string(),
-        constraints: z.string(),
-      }),
     })
     .passthrough(),
   research_topic: z.object({
@@ -63,20 +74,25 @@ const outputSchemas = {
       learning_status: z.enum(["usable", "insufficient_data"]),
     })
     .passthrough(),
-  evaluate_post: z.object({
-    rubric_version: z.string(),
-    type: z.literal("heuristic_quality_assessment"),
-    ranked_candidates: z.array(
-      z
-        .object({
-          id: z.string(),
-          quality_score: z.number(),
-          eligible: z.boolean(),
-        })
-        .passthrough(),
-    ),
-    recommended_id: z.string().nullable(),
-  }),
+  evaluate_post: z
+    .object({
+      rubric_version: z.string(),
+      type: z.enum([
+        "heuristic_quality_assessment",
+        "deterministic_validation_only",
+      ]),
+      ranked_candidates: z.array(
+        z
+          .object({
+            id: z.string(),
+            quality_score: z.number().nullable(),
+            eligible: z.boolean(),
+          })
+          .passthrough(),
+      ),
+      recommended_id: z.string().nullable(),
+    })
+    .passthrough(),
   register_published_post: z.object({
     published_post_id: z.string(),
     x_post_id: z.string(),
@@ -115,7 +131,10 @@ export function createServer(env: Env, identity: Identity) {
     },
     {
       instructions:
-        "Use create_post for the complete topic-to-post workflow; it returns one copy-ready post, heuristic analytics, and a saved draft ID. Publish manually. Later use register_published_post to link the actual publication, then get_post_performance to fetch metrics and update the reference bank. If a tool is unavailable or fails, report that limitation instead of presenting directly drafted text as server-generated. These contracts apply to any authorized MCP host.",
+        (env.GENERATION_MODE === "server"
+          ? "Server generation is enabled: create_post generates, evaluates and saves a post internally. Use its returned post_text and draft_id directly. "
+          : "Client generation is enabled. ") +
+        "Start with create_post. In client mode it returns status=client_drafting_required with a persisted research brief, preferences, rubric and historical patterns. YOU, the MCP host, must use your own model to write four candidates, evaluate and revise them, then call finalize_post with the chosen text, brief_id and your assessment. No separate model API key is required in client mode. evaluate_post provides deterministic length/constraint checks in client mode, not a model quality score. Only present the final saved post after finalize_post returns a draft_id. Explicit server mode may instead complete create_post directly. Publish manually; later link with register_published_post and fetch observed performance with get_post_performance. Never claim that directly drafted text was server-generated or independently scored. These instructions apply to every authorized MCP host.",
     },
   );
   const bank = new BankRepository(env, identity.ownerId);
@@ -223,11 +242,19 @@ export function createServer(env: Env, identity: Identity) {
   }
   register(
     "create_post",
-    "Research a topic, generate and evaluate distinct original drafts, and return one copy-ready X post with heuristic analytics. Persists the draft. No automatic publishing.",
+    "Start a post workflow. In client mode this returns a persisted research brief: use your own model to draft and assess four candidates, then call finalize_post. No server LLM key is needed. Explicit server mode generates the post internally.",
     createSchema,
     "generate",
     false,
     (input, req) => new CreatePostWorkflow(env, bank).run(input, req),
+  );
+  register(
+    "finalize_post",
+    "Validate and save the exact post written by the MCP client for a create_post brief. Supply your client quality assessment and claim source IDs. Returns a saved draft_id; no model API call is made.",
+    finalizeSchema,
+    "generate",
+    false,
+    (input) => new ClientDraftingService(env, bank).finalize(input),
   );
   register(
     "research_topic",
@@ -258,11 +285,13 @@ export function createServer(env: Env, identity: Identity) {
   );
   register(
     "evaluate_post",
-    "Batch heuristic quality assessment with factuality, safety, originality, length and user-constraint gates.",
+    "Check candidates. Client mode validates weighted X length and explicit constraints, returning null quality scores for the client to assess. Server mode performs a model-backed heuristic evaluation.",
     evaluateSchema,
     "generate",
     true,
     async (input) => {
+      if (env.GENERATION_MODE !== "server")
+        return validateClientCandidates(input);
       const research = await new ResearchOrchestrator(env).research(
         input.topic,
       );

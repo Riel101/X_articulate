@@ -1,5 +1,8 @@
 # BUILD.md — X Content Intelligence MCP Server
 
+**Implementation update — client generation (2026-11-09):** The default is now `GENERATION_MODE=client`. `create_post` persists research/preferences and returns a drafting brief. The MCP host writes, assesses and revises with its own model, then calls `finalize_post` for deterministic validation and durable storage. `evaluate_post` performs deterministic checks only in this mode; client scores are explicitly labelled, and edited publication linking makes no model call. No server OpenAI key is required. The original one-call OpenAI workflow below remains available only with explicit `GENERATION_MODE=server`. Research, account ownership, observed-metrics learning, and OAuth remain server responsibilities.
+
+
 **Status:** Implementation blueprint · **Revision:** 2.0 · **Updated:** 2026-11-08  
 **Primary language:** TypeScript · **Runtime:** Cloudflare Workers · **Protocol:** Remote MCP (Streamable HTTP)  
 **Core workflow:** Topic → research → reference-bank insights → draft generation → evaluation → refinement → copy-ready X post + transparent analytics  

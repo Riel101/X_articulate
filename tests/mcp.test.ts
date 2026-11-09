@@ -42,7 +42,7 @@ describe("remote MCP contract", () => {
       expect(data.result.serverInfo.name).toBe("x-content-intelligence");
     },
   );
-  it("discovers the same seven typed tools from a fresh request", async () => {
+  it("discovers the same eight typed tools from a fresh request", async () => {
     const { response, data } = await rpc({
       jsonrpc: "2.0",
       id: 2,
@@ -55,6 +55,7 @@ describe("remote MCP contract", () => {
     ).toEqual(
       [
         "create_post",
+        "finalize_post",
         "research_topic",
         "search_reference_bank",
         "evaluate_post",
@@ -108,7 +109,7 @@ it("publishes tool contracts before OAuth while keeping anonymous execution prot
           .slice(5)
       : text,
   );
-  expect(data.result.tools).toHaveLength(7);
+  expect(data.result.tools).toHaveLength(8);
   expect(
     data.result.tools.find((t: { name: string }) => t.name === "create_post")
       ._meta.securitySchemes,

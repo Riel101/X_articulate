@@ -90,3 +90,34 @@ export interface ResearchResult {
   warnings: string[];
   providers_used: string[];
 }
+
+export const clientAssessmentSchema = z.object({
+  dimension_scores: z.object({
+    relevance: z.number().min(0).max(20),
+    hook: z.number().min(0).max(20),
+    clarity: z.number().min(0).max(15),
+    value: z.number().min(0).max(20),
+    shareability: z.number().min(0).max(15),
+    discussion: z.number().min(0).max(10),
+  }),
+  strengths: z.array(z.string().max(300)).max(6).default([]),
+  caveats: z.array(z.string().max(300)).max(6).default([]),
+  factuality_reviewed: z.boolean(),
+  originality_reviewed: z.boolean(),
+  safety_reviewed: z.boolean(),
+});
+export const finalizeSchema = z.object({
+  brief_id: short,
+  post_text: z.string().min(1).max(2000),
+  assessment: clientAssessmentSchema,
+  client_model: z.string().min(1).max(100).default("unspecified"),
+  claims: z
+    .array(
+      z.object({
+        claim: z.string().min(1).max(500),
+        source_ids: z.array(z.string().max(100)).min(1).max(5),
+      }),
+    )
+    .max(5)
+    .default([]),
+});
