@@ -5,9 +5,14 @@ import {
 } from "cloudflare:test";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Env } from "../src/config/env";
-import { createSchema, finalizeSchema } from "../src/domain/contracts";
+import {
+  createSchema,
+  finalizeSchema,
+  evaluateSchema,
+} from "../src/domain/contracts";
 import { BankRepository } from "../src/repositories/bank";
 import { ClientDraftingService } from "../src/services/client-drafting";
+import { validateClientCandidates } from "../src/services/client-evaluation";
 import { CreatePostWorkflow } from "../src/services/create-post";
 import { PerformanceService } from "../src/services/performance";
 import worker from "../src/index";
@@ -21,6 +26,8 @@ const bindings: Env = {
 };
 const bank = () => new BankRepository(bindings, "owner_test");
 const assessment = {
+  summary: "Clear and useful advice for builders.",
+  improvements: [],
   dimension_scores: {
     relevance: 18,
     hook: 16,
@@ -92,9 +99,9 @@ it("prepares, finalizes and replays a client post with transparent assessment pr
     ready_to_copy: true,
     generation_mode: "client",
     pre_publication_analytics: {
-      type: "client_heuristic_quality_assessment",
+      type: "editorial_review",
       assessment_source: "client",
-      quality_score: 85,
+      quality_score: null,
     },
     validation: { length: "pass", factuality: "client_reviewed" },
   });
@@ -103,11 +110,11 @@ it("prepares, finalizes and replays a client post with transparent assessment pr
   const stored = await bank().draft(String(saved.draft_id));
   expect(stored?.final_text).toBe(text);
   const evaluation = await env.DB.prepare(
-    "SELECT model_id FROM evaluations WHERE draft_id=?",
+    "SELECT client_model FROM editorial_reviews WHERE draft_id=?",
   )
     .bind(saved.draft_id)
     .first();
-  expect(evaluation?.model_id).toBe("client-reported:test-host");
+  expect(evaluation?.client_model).toBe("test-host");
   expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 it("rejects changed idempotent inputs, invalid text, unreviewed claims, foreign briefs and fabricated source references", async () => {
@@ -120,11 +127,7 @@ it("rejects changed idempotent inputs, invalid text, unreviewed claims, foreign 
       "req_changed",
     ),
   ).rejects.toMatchObject({ code: "INVALID_INPUT" });
-  for (const post of [
-    "tools " + "x".repeat(281),
-    "No required phrase.",
-    "tools are guaranteed",
-  ])
+  for (const post of ["   ", "No required phrase.", "tools are guaranteed"])
     await expect(
       service.finalize(final(String(brief.brief_id), post)),
     ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
@@ -269,7 +272,10 @@ it("preserves web provenance while using only the research API, never a model AP
   const ownBank = new BankRepository(researchEnv, "owner_test");
   const service = new ClientDraftingService(researchEnv, ownBank);
   const brief = await service.prepare(
-    createSchema.parse({ topic: "Client research provenance unique" }),
+    createSchema.parse({
+      topic: "Client research provenance unique",
+      research_mode: "optional",
+    }),
     "req_sources",
   );
   const sourceId = (brief.research as { sources: { id: string }[] }).sources[0]
@@ -293,4 +299,27 @@ it("preserves web provenance while using only the research API, never a model AP
     "Clear documentation helps readers complete tasks.",
   );
   expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+});
+
+it("finalizes and evaluates long text without a character cap", async () => {
+  const brief = await prepare();
+  const longText = "Useful tools help people work clearly. ".repeat(80);
+  const saved = await new ClientDraftingService(bindings, bank()).finalize(
+    finalizeSchema.parse(final(String(brief.brief_id), longText)),
+  );
+  expect(saved.post_text).toBe(longText);
+  expect(
+    (saved.pre_publication_analytics as { character_limit: null })
+      .character_limit,
+  ).toBeNull();
+  const evaluated = await validateClientCandidates(
+    evaluateSchema.parse({
+      topic: "Tools",
+      candidates: [{ id: "long", text: longText }],
+    }),
+  );
+  expect(evaluated.ranked_candidates[0].deterministic_valid).toBe(true);
+  expect((await bank().draft(String(saved.draft_id)))?.final_text).toBe(
+    longText,
+  );
 });

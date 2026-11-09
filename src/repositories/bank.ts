@@ -230,12 +230,12 @@ export class BankRepository {
       )
       .run();
   }
-  async acquire(key: string) {
+  async acquire(key: string, ttlMs = 240000) {
     const now = new Date().toISOString();
     const result = await this.env.DB.prepare(
       "INSERT INTO request_locks(owner_id,request_key,expires_at) VALUES(?,?,?) ON CONFLICT(owner_id,request_key) DO UPDATE SET expires_at=excluded.expires_at WHERE request_locks.expires_at<?",
     )
-      .bind(this.owner, key, new Date(Date.now() + 240000).toISOString(), now)
+      .bind(this.owner, key, new Date(Date.now() + ttlMs).toISOString(), now)
       .run();
     if (!result.meta.changes)
       throw new AppError(

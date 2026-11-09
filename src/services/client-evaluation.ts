@@ -1,7 +1,8 @@
 import type { z } from "zod";
 import type { evaluateSchema } from "../domain/contracts";
 import { hash } from "../domain/errors";
-import { dimensions, RUBRIC, validatePost } from "../domain/post";
+import { RUBRIC, validatePost } from "../domain/post";
+import { rankingGuidance, simulateRanking } from "./ranking";
 export async function validateClientCandidates(
   input: z.infer<typeof evaluateSchema>,
 ) {
@@ -24,7 +25,7 @@ export async function validateClientCandidates(
           safety: "requires_client_review",
         },
         issues: [
-          ...(!validation.length ? ["Repair weighted X length."] : []),
+          ...(!validation.length ? ["Repair empty or invalid text."] : []),
           ...(!validation.constraints
             ? ["Repair must_include/avoid constraints."]
             : []),
@@ -41,9 +42,16 @@ export async function validateClientCandidates(
     rubric_version: RUBRIC,
     ranked_candidates: ranked,
     recommended_id: null,
-    rubric: { dimension_maxima: dimensions },
+    ranking_guidance: rankingGuidance,
+    ranking_simulation: input.ranking_predictions
+      ? simulateRanking(
+          input.ranking_predictions,
+          ranked.filter((c) => c.deterministic_valid).map((c) => c.id),
+          input.candidates.map((c) => c.id),
+        )
+      : null,
     instructions:
-      "Use your own model to score and review these candidates. The server checked length and explicit constraints only; null scores mean no model evaluation was performed. Finalize the chosen post with finalize_post.",
+      "Use your own model to review and compare candidates using ranking_guidance, the author voice and observed account context. Explain weaknesses and offer concrete rewritten passages; recommend a candidate qualitatively. The server checked text validity and explicit constraints only. Do not invent algorithm scores or reach predictions. Finalize the chosen post with your editorial review.",
     requires_server_model_key: false,
   };
 }

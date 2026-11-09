@@ -4,9 +4,10 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-08",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "triggers": { "crons": ["0 * * * *"] },
   "observability": { "enabled": true },
   "vars": {
-    "GENERATION_MODE": "server",
+    "GENERATION_MODE": "client",
     "MODEL_PROVIDER": "nvidia",
     "NVIDIA_MODEL": "nvidia/nemotron-3-ultra-550b-a55b",
     "MCP_ALLOWED_ORIGINS": "https://chatgpt.com",

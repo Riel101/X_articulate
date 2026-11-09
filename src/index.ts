@@ -1,4 +1,5 @@
 import { createMcpHandler } from "agents/mcp/server";
+import { refreshPerformance } from "./services/performance-refresh";
 import type { Env, Identity } from "./config/env";
 import { AppError, errorResult, id } from "./domain/errors";
 import { authenticate } from "./mcp/auth";
@@ -56,6 +57,13 @@ async function serveMcp(
   })(request, env, ctx);
 }
 export default {
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext,
+  ) {
+    ctx.waitUntil(refreshPerformance(env));
+  },
   async fetch(
     request: Request,
     env: Env,
@@ -66,7 +74,7 @@ export default {
       return Response.json({
         status: "ok",
         service: "x-content-intelligence",
-        version: "1.1.0",
+        version: "2.0.0",
       });
     try {
       if (path === "/mcp") {

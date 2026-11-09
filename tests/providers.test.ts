@@ -34,22 +34,22 @@ it("normalizes Tavily evidence and keeps snippets unverified by independent sour
     include_raw_content: false,
     max_results: 5,
     time_range: "week",
+    topic: "news",
+    days: 7,
   });
 });
 it("uses the connected account and documented query parameters for X research", async () => {
-  const spy = vi
-    .spyOn(globalThis, "fetch")
-    .mockResolvedValue(
-      Response.json({
-        tweets: [
-          {
-            id: "123456789",
-            text: "A discussion",
-            author: { username: "writer" },
-          },
-        ],
-      }),
-    );
+  const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+    Response.json({
+      tweets: [
+        {
+          id: "123456789",
+          text: "A discussion",
+          author: { username: "writer" },
+        },
+      ],
+    }),
+  );
   const result = await new ZernioResearchProvider(env).search("agents");
   expect(result[0]).toMatchObject({
     url: "https://x.com/writer/status/123456789",

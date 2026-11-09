@@ -38,7 +38,13 @@ describe("deterministic safeguards", () => {
       validatePost("a\nb", { must_include: [], avoid: [] }).weighted_characters,
     ).toBe(3);
     expect(
-      validatePost("x".repeat(281), { must_include: [], avoid: [] }).length,
+      validatePost("x".repeat(5000), { must_include: [], avoid: [] }).length,
+    ).toBe(true);
+    expect(validatePost("   ", { must_include: [], avoid: [] }).length).toBe(
+      false,
+    );
+    expect(
+      validatePost("bad\uFFFEtext", { must_include: [], avoid: [] }).length,
     ).toBe(false);
   });
   it("rejects malformed and hostile post locators", () => {

@@ -4,6 +4,7 @@ import type { Env, Identity } from "../config/env";
 import {
   bankSchema,
   createSchema,
+  voiceSchema,
   finalizeSchema,
   evaluateSchema,
   performanceSchema,
@@ -20,9 +21,12 @@ import { PerformanceService } from "../services/performance";
 import { ResearchOrchestrator } from "../services/research";
 import { ClientDraftingService } from "../services/client-drafting";
 import { validateClientCandidates } from "../services/client-evaluation";
+import { VoiceService } from "../services/voice";
+import { performanceContext } from "../services/performance-refresh";
 import { reserveUsage } from "./auth";
 // Output schemas require the important contract fields while permitting documented metadata.
 const outputSchemas = {
+  manage_voice: z.object({ status: z.literal("ok") }).passthrough(),
   create_post: z
     .object({
       status: z.enum(["client_drafting_required", "complete"]),
@@ -41,8 +45,8 @@ const outputSchemas = {
       post_text: z.string(),
       pre_publication_analytics: z
         .object({
-          type: z.literal("client_heuristic_quality_assessment"),
-          quality_score: z.number(),
+          type: z.literal("editorial_review"),
+          quality_score: z.null(),
           assessment_source: z.literal("client"),
         })
         .passthrough(),
@@ -127,14 +131,14 @@ export function createServer(env: Env, identity: Identity) {
   const server = new McpServer(
     {
       name: "x-content-intelligence",
-      version: "1.1.0",
+      version: "2.0.0",
     },
     {
       instructions:
         (env.GENERATION_MODE === "server"
-          ? "Server generation is enabled: create_post generates, evaluates and saves a post internally. Use its returned post_text and draft_id directly. "
-          : "Client generation is enabled. ") +
-        "Start with create_post. In client mode it returns status=client_drafting_required with a persisted research brief, preferences, rubric and historical patterns. YOU, the MCP host, must use your own model to write four candidates, evaluate and revise them, then call finalize_post with the chosen text, brief_id and your assessment. No separate model API key is required in client mode. evaluate_post provides deterministic length/constraint checks in client mode, not a model quality score. Only present the final saved post after finalize_post returns a draft_id. Explicit server mode may instead complete create_post directly. Publish manually; later link with register_published_post and fetch observed performance with get_post_performance. Never claim that directly drafted text was server-generated or independently scored. These instructions apply to every authorized MCP host.",
+          ? "Optional server generation is enabled. "
+          : "Use your own model for writing and editorial judgment. ") +
+        "Start with create_post to load voice examples, prior edits, optional research and observed performance. Draft naturally in the author's voice, with no character cap or forced candidate count. Use research_mode=off for personal opinion/experience, auto by default, and required only when supporting factual claims. Explicit current_information_required=yes requires recent dated evidence. Failures of optional research must not block timeless writing. Use evaluate_post for text checks and X-informed ranking guidance; compare candidates qualitatively, suggesting specific improvements. Optional public-weight simulations require explicitly supplied uncalibrated probabilities, never raw metrics or invented algorithm scores. Use finalize_post to persist the chosen text and editorial review (no numeric scores). Revise via create_post revision_of and feedback, then finalize; this saves the edit history. manage_voice reads or updates preferences and examples; save or erase memory only when requested. Explain what voice or performance evidence informed the draft. Link manually published posts with register_published_post. Linked posts refresh hourly when analytics is configured; missing observations are not zero and a small sample is not a proven pattern. These tools work with every authorized MCP client.",
     },
   );
   const bank = new BankRepository(env, identity.ownerId);
@@ -156,8 +160,8 @@ export function createServer(env: Env, identity: Identity) {
         _meta: { securitySchemes: [{ type: "oauth2", scopes: [scope] }] },
         annotations: {
           readOnlyHint: readOnly,
-          destructiveHint: false,
-          idempotentHint: name !== "create_post",
+          destructiveHint: name === "manage_voice",
+          idempotentHint: name !== "create_post" && name !== "manage_voice",
           openWorldHint: true,
         },
       },
@@ -241,8 +245,16 @@ export function createServer(env: Env, identity: Identity) {
     );
   }
   register(
+    "manage_voice",
+    "Read voice memory, replace explicit preferences, save a user-approved example, delete an example, or reset voice and observed-edit memory. Mutate only at the user's request.",
+    voiceSchema,
+    "generate",
+    false,
+    (input) => new VoiceService(env, identity.ownerId).manage(input),
+  );
+  register(
     "create_post",
-    "Start a post workflow. In client mode this returns a persisted research brief: use your own model to draft and assess four candidates, then call finalize_post. No server LLM key is needed. Explicit server mode generates the post internally.",
+    "Prepare writing context: saved voice, observed edits/performance and optional research. Use your own model to draft/revise, then finalize_post. revision_of plus feedback starts a saved revision. No separate model key is needed in client mode.",
     createSchema,
     "generate",
     false,
@@ -250,7 +262,7 @@ export function createServer(env: Env, identity: Identity) {
   );
   register(
     "finalize_post",
-    "Validate and save the exact post written by the MCP client for a create_post brief. Supply your client quality assessment and claim source IDs. Returns a saved draft_id; no model API call is made.",
+    "Validate and save the exact post written by the MCP client for a create_post brief. Supply an editorial review with concrete improvements, review flags and claim source IDs. No numeric score is required. Returns a saved draft_id; no model API call is made.",
     finalizeSchema,
     "generate",
     false,
@@ -285,13 +297,20 @@ export function createServer(env: Env, identity: Identity) {
   );
   register(
     "evaluate_post",
-    "Check candidates. Client mode validates weighted X length and explicit constraints, returning null quality scores for the client to assess. Server mode performs a model-backed heuristic evaluation.",
+    "Check candidate text, load voice/performance context and guide an X-informed editorial comparison with concrete suggestions. Optional supplied probabilities enable an explicitly labelled public-weight scenario simulation; no automatic reach or quality score. Server mode retains legacy model evaluation.",
     evaluateSchema,
     "generate",
     true,
     async (input) => {
-      if (env.GENERATION_MODE !== "server")
-        return validateClientCandidates(input);
+      if (env.GENERATION_MODE !== "server") {
+        const [checks, voice, performance, learning] = await Promise.all([
+          validateClientCandidates(input),
+          new VoiceService(env, identity.ownerId).read(),
+          performanceContext(env, identity.ownerId),
+          bank.insights(input.topic, input.audience),
+        ]);
+        return { ...checks, voice, performance, learning };
+      }
       const research = await new ResearchOrchestrator(env).research(
         input.topic,
       );

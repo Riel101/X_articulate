@@ -25,7 +25,7 @@ export class ResearchOrchestrator {
       this.providers.map(async (p) => {
         try {
           const ttl = recent ? 900 : 86400;
-          const key = `research:v1:${await hash(JSON.stringify([p.id, topic.trim().toLowerCase(), recent, Math.floor(Date.now() / 1000 / ttl), p.id === "zernio" ? this.env.ZERNIO_ACCOUNT_ID : "public"]))}`;
+          const key = `research:v2:${await hash(JSON.stringify([p.id, topic.trim().toLowerCase(), recent, Math.floor(Date.now() / 1000 / ttl), p.id === "zernio" ? this.env.ZERNIO_ACCOUNT_ID : "public"]))}`;
           let cached: {
             expires: number;
             evidence: ResearchResult["evidence"];

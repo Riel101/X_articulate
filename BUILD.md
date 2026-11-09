@@ -1,3 +1,7 @@
+> Approved redesign (current implementation): client-side writing is the production default; optional purposeful research, explicit voice memory and saved revisions, score-free editorial review, hourly performance refresh, and X-informed ranking guidance with an optional labelled public-weight scenario simulator supersede conflicting original requirements below. No separate model key, forced four-candidate workflow or numerical quality score is required. README.md documents the current API.
+
+> Current requirement: posts have no enforced character limit. Weighted counts remain informational and `character_limit` is `null`; this supersedes the original length limits below.
+
 # BUILD.md — X Content Intelligence MCP Server
 
 **Implementation update — client generation (2026-11-09):** The default is now `GENERATION_MODE=client`. `create_post` persists research/preferences and returns a drafting brief. The MCP host writes, assesses and revises with its own model, then calls `finalize_post` for deterministic validation and durable storage. `evaluate_post` performs deterministic checks only in this mode; client scores are explicitly labelled, and edited publication linking makes no model call. No server OpenAI key is required. The original one-call OpenAI workflow below remains available only with explicit `GENERATION_MODE=server`. Research, account ownership, observed-metrics learning, and OAuth remain server responsibilities.
@@ -365,7 +369,7 @@ Only `topic` is required. The server supplies sensible defaults. `post_length_pr
       "discussion": 6
     },
     "weighted_characters": 169,
-    "character_limit": 280,
+    "character_limit": null,
     "strengths": ["Clear developer audience", "Specific practical insight"],
     "caveats": ["Quality score is not a virality probability"]
   },

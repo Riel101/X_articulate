@@ -110,7 +110,7 @@ export class CreatePostWorkflow {
             }),
           },
         }),
-        "Extract at most five factual insights with source_ids referencing supplied web evidence IDs (empty claims for evergreen fallback). Never invent source IDs. Then write four DISTINCT original X posts with distinct hooks. Each must fit 280 weighted characters (URLs count 23, emoji normally 2). Respect language and every constraint. No citations or analytics in text. With evergreen_only research, write timeless advice/opinion only. Use web evidence cautiously; X posts are conversation context, never factual proof.",
+        "Extract at most five factual insights with source_ids referencing supplied web evidence IDs (empty claims for evergreen fallback). Never invent source IDs. Then write four DISTINCT original X posts with distinct hooks. There is no character limit; use the length needed to develop the idea clearly without padding. Respect language and every constraint. No citations or analytics in text. With evergreen_only research, write timeless advice/opinion only. Use web evidence cautiously; X posts are conversation context, never factual proof.",
         brief,
       );
       for (const claim of generated.claims) {
@@ -145,7 +145,7 @@ export class CreatePostWorkflow {
           "revision",
           candidateSchema,
           candidateJson,
-          "Repair the supplied candidate to pass every failed gate. Preserve user constraints. Return one original X post under 280 weighted characters. Do not truncate. Remove unsupported claims.",
+          "Repair the supplied candidate to pass every failed gate. Preserve user constraints. Return one original X post with no character limit. Do not truncate. Remove unsupported claims.",
           {
             brief,
             candidate: candidates[0],
@@ -215,7 +215,7 @@ export class CreatePostWorkflow {
           scoring_version: RUBRIC,
           dimension_scores: winner.dimensions,
           weighted_characters: validation.weighted_characters,
-          character_limit: 280,
+          character_limit: null,
           strengths: winner.strengths,
           caveats: [
             "Quality score is not a prediction of impressions or virality.",

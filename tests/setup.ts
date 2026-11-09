@@ -17,6 +17,9 @@ beforeAll(async () => {
 beforeEach(async () => {
   await env.DB.batch(
     [
+      "voice_profiles",
+      "voice_examples",
+      "draft_revisions",
       "drafting_briefs",
       "accounts",
       "drafts",

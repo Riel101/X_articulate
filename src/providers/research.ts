@@ -33,7 +33,7 @@ export class TavilyProvider implements ResearchProvider {
         max_results: 5,
         include_answer: false,
         include_raw_content: false,
-        ...(recent ? { time_range: "week" } : {}),
+        ...(recent ? { topic: "news", days: 7, time_range: "week" } : {}),
       }),
     });
     const evidence: Evidence[] = [];

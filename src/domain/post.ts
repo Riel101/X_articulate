@@ -16,7 +16,7 @@ export function validatePost(
   const lower = text.toLowerCase();
   return {
     weighted_characters: parsed.weightedLength,
-    length: parsed.valid && parsed.weightedLength <= 280,
+    length: !twitter.hasInvalidCharacters(text) && text.trim().length > 0,
     constraints:
       constraints.must_include.every((s) => lower.includes(s.toLowerCase())) &&
       constraints.avoid.every((s) => !lower.includes(s.toLowerCase())),
