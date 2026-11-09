@@ -15,6 +15,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply x-content-bank --remote"
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.2.4",
     "@modelcontextprotocol/server": "2.4.0",
     "agents": "0.33.0",
     "twitter-text": "^3.1.0",

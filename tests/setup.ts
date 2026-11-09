@@ -22,6 +22,7 @@ beforeEach(async () => {
       "learning_summaries",
       "usage_events",
       "request_locks",
+      "oauth_login_attempts",
     ].map((table) => env.DB.prepare(`DELETE FROM ${table}`)),
   );
 });

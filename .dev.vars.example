@@ -1,7 +1,11 @@
-# Private MVP: clients must support Authorization: Bearer headers.
+# Owner access key for the OAuth approval page; also supports direct bearer clients.
 MCP_AUTH_TOKEN=replace-with-a-random-token-at-least-32-characters
 MCP_OWNER_ID=owner_local
+# Optional canonical public endpoint (recommended in production).
+# MCP_PUBLIC_URL=https://your-worker.your-subdomain.workers.dev/mcp
 MCP_SCOPES=research generate metrics
+# Browser-based MCP clients only; native/server-side agents need no Origin setting.
+# MCP_ALLOWED_ORIGINS=https://your-agent.example
 OPENAI_API_KEY=
 TAVILY_API_KEY=
 ZERNIO_API_KEY=

@@ -108,10 +108,16 @@ const outputSchemas = {
     .passthrough(),
 };
 export function createServer(env: Env, identity: Identity) {
-  const server = new McpServer({
-    name: "x-content-intelligence",
-    version: "1.0.0",
-  });
+  const server = new McpServer(
+    {
+      name: "x-content-intelligence",
+      version: "1.1.0",
+    },
+    {
+      instructions:
+        "Use create_post for the complete topic-to-post workflow; it returns one copy-ready post, heuristic analytics, and a saved draft ID. Publish manually. Later use register_published_post to link the actual publication, then get_post_performance to fetch metrics and update the reference bank. If a tool is unavailable or fails, report that limitation instead of presenting directly drafted text as server-generated. These contracts apply to any authorized MCP host.",
+    },
+  );
   const bank = new BankRepository(env, identity.ownerId);
   const performance = new PerformanceService(env, bank);
   function register<T extends z.ZodType>(
@@ -128,6 +134,7 @@ export function createServer(env: Env, identity: Identity) {
         description,
         inputSchema: schema as z.ZodType,
         outputSchema: outputSchemas[name],
+        _meta: { securitySchemes: [{ type: "oauth2", scopes: [scope] }] },
         annotations: {
           readOnlyHint: readOnly,
           destructiveHint: false,
@@ -172,7 +179,16 @@ export function createServer(env: Env, identity: Identity) {
             ) as CallToolResult["structuredContent"],
           };
         } catch (error) {
+          const challenge =
+            error instanceof AppError &&
+            ["FORBIDDEN", "UNAUTHORIZED"].includes(error.code) &&
+            env.MCP_PUBLIC_URL
+              ? `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource/mcp", env.MCP_PUBLIC_URL).href}", error="insufficient_scope", error_description="Authorize this client for the required tool permission", scope="${scope}"`
+              : undefined;
           return {
+            ...(challenge
+              ? { _meta: { "mcp/www_authenticate": [challenge] } }
+              : {}),
             isError: true,
             content: [
               {

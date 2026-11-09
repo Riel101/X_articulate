@@ -3,17 +3,24 @@
   "name": "x-content-intelligence-mcp",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-08",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": { "enabled": true },
-  "vars": { "OPENAI_MODEL": "gpt-4.1-mini", "DAILY_TOOL_LIMIT": "100" },
+  "vars": {
+    "MCP_ALLOWED_ORIGINS": "https://chatgpt.com",
+    "MCP_PUBLIC_URL": "https://x-content-intelligence-mcp.adeyemigabriel429.workers.dev/mcp",
+    "OPENAI_MODEL": "gpt-4.1-mini",
+    "DAILY_TOOL_LIMIT": "100",
+  },
   "d1_databases": [
     {
-      "binding": "x_content_bank",
+      "binding": "DB",
       "database_name": "x-content-bank",
-      "database_id": "9ce89efa-aba7-43e9-9230-bcb7c8b5faf0"
-    }
+      "database_id": "9ce89efa-aba7-43e9-9230-bcb7c8b5faf0",
+      "migrations_dir": "migrations",
+    },
   ],
   "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "8dea603e2b3d47bfb19cfb15f04d7ec9" },
     { "binding": "RESEARCH_CACHE", "id": "501cc3bf110147228cea8a2171bc9928" },
   ],
 }

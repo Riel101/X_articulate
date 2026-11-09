@@ -26,24 +26,44 @@ npm run dev
 
 Fill in `.dev.vars` locally. Never commit real credentials.
 
-| Setting             | Purpose                                                       |
-| ------------------- | ------------------------------------------------------------- |
-| `MCP_AUTH_TOKEN`    | Random bearer token of at least 32 characters                 |
-| `MCP_OWNER_ID`      | Stable owner ID; storage identity comes from this binding     |
-| `MCP_SCOPES`        | Space-separated `research generate metrics` permissions       |
-| `OPENAI_API_KEY`    | OpenAI Responses API credential                               |
-| `OPENAI_MODEL`      | Structured-output-capable model; configurable in Wrangler     |
-| `TAVILY_API_KEY`    | Web research; optional for evergreen-only development         |
-| `ZERNIO_API_KEY`    | Recent X search, owned publication verification and analytics |
-| `ZERNIO_ACCOUNT_ID` | One connected and authorized X account                        |
-| `X_USERNAME`        | That account's X username                                     |
-| `DAILY_TOOL_LIMIT`  | Atomic daily per-owner tool-call cap; default 100             |
+| Setting             | Purpose                                                                   |
+| ------------------- | ------------------------------------------------------------------------- |
+| `MCP_AUTH_TOKEN`    | Owner approval key (32+ characters); also works for direct bearer clients |
+| `MCP_OWNER_ID`      | Stable owner ID; storage identity comes from this binding                 |
+| `MCP_SCOPES`        | Space-separated `research generate metrics` permissions                   |
+| `OPENAI_API_KEY`    | OpenAI Responses API credential                                           |
+| `OPENAI_MODEL`      | Structured-output-capable model; configurable in Wrangler                 |
+| `TAVILY_API_KEY`    | Web research; optional for evergreen-only development                     |
+| `ZERNIO_API_KEY`    | Recent X search, owned publication verification and analytics             |
+| `ZERNIO_ACCOUNT_ID` | One connected and authorized X account                                    |
+| `X_USERNAME`        | That account's X username                                                 |
+| `DAILY_TOOL_LIMIT`  | Atomic daily per-owner tool-call cap; default 100                         |
 
 If no research provider is available, evergreen topics can still produce timeless advice. Current-information requests fail when research is unavailable. Search excerpts are treated as untrusted leads and are never automatically labeled corroborated. Factuality and originality gates are model assessments, with that limitation included in the response.
 
-`GET /health` is a public liveness endpoint. The MCP endpoint is `http://localhost:8787/mcp` (check Wrangler's output for the actual port). Every MCP request requires `Authorization: Bearer <token>`.
+`GET /health` is a public liveness endpoint. The MCP endpoint is `http://localhost:8787/mcp` (check Wrangler's output for the actual port). MCP initialization and tool-definition discovery are public. Tool calls and data access require `Authorization: Bearer <token>` (OAuth or the private owner token).
 
-This release uses the blueprint's **private first-party bearer-token mode**. Use clients that support custom HTTP headers. OAuth discovery, login and dynamic client registration are not implemented; clients requiring OAuth cannot connect until an OAuth layer is added. Each deployment maps one token to one owner/account. Changing an existing account mapping is deliberately rejected.
+The server supports **standard OAuth 2.1 for compatible MCP clients**, plus the existing private bearer-token mode. OAuth uses Cloudflare's Workers OAuth Provider, S256 PKCE, browser-bound single-use consent, one-hour access tokens, and refresh tokens lasting up to 30 days. Each deployment still belongs to one configured owner/X account. Changing an existing account mapping is deliberately rejected.
+
+## Agent-independent connections
+
+The server exposes standard MCP Streamable HTTP at `/mcp`. Any MCP-compatible host can connect using OAuth 2.1 with S256 PKCE, or a direct bearer token if the host supports custom headers. OAuth discovery, dynamic registration, consent and tool contracts are independent of the agent vendor. Each host must connect and authorize the server, then expose its tools to the relevant conversation. A model mentioning X Articulator does not establish that connection.
+
+Native/server-side MCP clients normally send no browser `Origin` and need no origin configuration. For browser-based MCP hosts, configure `MCP_ALLOWED_ORIGINS` as comma-separated exact origins, such as `https://agent.example,https://another-agent.example`. These origins receive CORS preflight support and can read the OAuth challenge. Unlisted browser origins are rejected; no vendor has a hardcoded exemption. Consent submissions always require the Worker's own origin. The current deployment enables ChatGPT's browser origin through configuration.
+
+If a host says tools are unavailable, verify that its server details list all seven tools, refresh its tool definitions, and explicitly select/attach the server in that conversation. Check that `create_post` is enabled. A direct draft from the model is not a result from this server: successful creation returns a persisted `draft_id` and heuristic analytics.
+
+## Connect ChatGPT
+
+1. Add a custom MCP server in ChatGPT with your public HTTPS endpoint ending in `/mcp`.
+2. Select **OAuth**. Leave client ID and client secret empty so ChatGPT can discover/register its client automatically.
+3. Start the connection. On your Worker's **Connect X Content Intelligence** page, review the client, callback hostname, and permissions.
+4. Enter the value of your Worker secret **`MCP_AUTH_TOKEN`** in **Owner access key**, then select **Allow connection**. This key is checked by your Worker and never given to ChatGPT.
+5. Finish the connection and refresh/discover tools. If you previously created a failed connection, remove and recreate it to clear cached discovery settings.
+
+You do not need an OpenAI OAuth client ID, a separate Auth0 account, or to enter your OpenAI API key in ChatGPT's OAuth settings. ChatGPT receives a scoped OAuth token; billable tools remain protected. Discovery is public at `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/mcp`. The client must use S256 PKCE and the exact `/mcp` resource audience.
+
+`OAUTH_KV` stores OAuth clients, consent transactions, grants and encrypted token properties. Keep it separate from `RESEARCH_CACHE`. The D1 login-attempt counter limits failed owner-key guesses to ten per source IP per 15-minute window. OAuth approvals are tied to the configured owner and current enabled scopes. Rotating `MCP_AUTH_TOKEN` changes the approval key and direct-token access; existing OAuth grants remain valid until revoked or expired. Disconnect/revoke the client to remove an existing grant.
 
 ## Connect an MCP client
 
@@ -93,7 +113,7 @@ npm test
 npm run build
 ```
 
-Tests run in the Cloudflare Worker runtime with real local D1 migrations and mocked provider HTTP responses. They do not spend API credits. The dry-run build emits the Worker bundle into ignored `dist/`. Live provider acceptance and host-client checks require configured credentials; mocked tests cannot establish real account permissions or model quality.
+Tests run in the Cloudflare Worker runtime with real local D1 migrations and mocked provider HTTP responses. They do not spend API credits. The dry-run build emits the Worker bundle into ignored `dist/`. OAuth discovery, registration, approval, token exchange, refresh, PKCE rejection, and cookie/origin checks run end to end in the Worker tests. Live provider acceptance and host-client checks require configured credentials; mocked tests cannot establish real account permissions or model quality.
 
 ## Cloudflare deployment
 
@@ -101,9 +121,10 @@ Tests run in the Cloudflare Worker runtime with real local D1 migrations and moc
 npx wrangler login
 npx wrangler d1 create x-content-bank
 npx wrangler kv namespace create RESEARCH_CACHE
+npx wrangler kv namespace create OAUTH_KV
 ```
 
-Replace the placeholder D1 and KV IDs in `wrangler.jsonc` with the returned IDs. Add non-secret owner/account settings through Worker bindings or Wrangler variables. Store credentials with `wrangler secret put`:
+For a new deployment, set the D1 and both KV IDs in `wrangler.jsonc` to your own resource IDs. The D1 binding must be named `DB`; OAuth storage must be bound as `OAUTH_KV`. Set `MCP_PUBLIC_URL` to the exact public HTTPS `/mcp` endpoint, including its hostname. Add non-secret owner/account settings through Worker bindings or Wrangler variables. Store credentials with `wrangler secret put`:
 
 ```sh
 npx wrangler secret put MCP_AUTH_TOKEN
@@ -117,7 +138,7 @@ npm run db:migrate:remote
 npm run deploy
 ```
 
-Connect clients to `https://<worker>.<subdomain>.workers.dev/mcp`. Custom domains may require the Agents handler's allowed-hostname configuration. Browser requests are restricted to the same origin. The repository contains no production credentials, provisioned resources or automatic deployment step.
+Connect clients to `https://<worker>.<subdomain>.workers.dev/mcp`. Custom domains may require the Agents handler's allowed-hostname configuration. Browser MCP requests allow the canonical server origin plus the configurable `MCP_ALLOWED_ORIGINS` list; consent submissions require the Worker's own origin. The repository contains no production credentials, provisioned resources or automatic deployment step.
 
 ## Budgets and operations
 
@@ -149,3 +170,5 @@ Deletion cascades through publications, snapshots, evaluations and source refere
 Implement `ResearchProvider` in `src/providers/research.ts` (`id`, `supports`, `search`) and pass it to `ResearchOrchestrator` or register it in `defaultProviders`. Return normalized provenance, short permitted excerpts and honest verification state. Providers must enforce account permissions, deadlines, retries, response limits and applicable data-use terms. External content is untrusted data; no adapter should execute source instructions or expose arbitrary URL fetching.
 
 Provider contracts were checked against the [Cloudflare stateless MCP handler](https://developers.cloudflare.com/agents/model-context-protocol/apis/handler-api/), [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs), [Tavily Search](https://docs.tavily.com/documentation/api-reference/endpoint/search), [Zernio X search changelog](https://docs.zernio.com/changelog), [external-post sync](https://docs.zernio.com/analytics/sync-external-posts) and [analytics](https://docs.zernio.com/core/analytics). Provider permissions and response shapes still require live acceptance with your own account.
+
+OAuth may use the same browser tab or a popup, as chosen by the MCP client. Complete the approval and callback either way; a new tab is not an OAuth requirement. Tool definitions include per-tool OAuth scope metadata for clients that link accounts after discovery. Public discovery exposes contracts only, never account records or billable execution.

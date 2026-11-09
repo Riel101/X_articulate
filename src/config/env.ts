@@ -1,5 +1,8 @@
 export interface Env {
   DB: D1Database;
+  OAUTH_KV: KVNamespace;
+  MCP_PUBLIC_URL?: string;
+  MCP_ALLOWED_ORIGINS?: string;
   RESEARCH_CACHE?: KVNamespace;
   MCP_AUTH_TOKEN: string;
   MCP_OWNER_ID: string;
