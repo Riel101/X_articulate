@@ -1,0 +1,15 @@
+PRAGMA foreign_keys = ON;
+CREATE TABLE accounts (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL UNIQUE, zernio_account_id TEXT NOT NULL, x_username TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE drafts (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, topic TEXT NOT NULL, audience TEXT NOT NULL, tone TEXT NOT NULL, intent TEXT NOT NULL, language TEXT NOT NULL, final_text TEXT NOT NULL, text_hash TEXT NOT NULL, features_json TEXT NOT NULL, created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'generated', request_id TEXT, input_hash TEXT NOT NULL, response_json TEXT NOT NULL, UNIQUE(owner_id, request_id));
+CREATE INDEX drafts_owner_created ON drafts(owner_id, created_at);
+CREATE INDEX drafts_comparable ON drafts(owner_id, topic, audience);
+CREATE TABLE evaluations (id TEXT PRIMARY KEY, draft_id TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE, candidate_id TEXT NOT NULL, score REAL NOT NULL, dimensions_json TEXT NOT NULL, hard_gates_json TEXT NOT NULL, rubric_version TEXT NOT NULL, model_id TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE TABLE published_posts (id TEXT PRIMARY KEY, draft_id TEXT REFERENCES drafts(id) ON DELETE CASCADE, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, x_post_id TEXT NOT NULL, x_post_url TEXT NOT NULL, actual_text TEXT NOT NULL, actual_text_hash TEXT NOT NULL, features_json TEXT NOT NULL, published_at TEXT NOT NULL, edited_from_draft INTEGER NOT NULL, verification TEXT NOT NULL, provider_post_id TEXT, created_at TEXT NOT NULL, UNIQUE(account_id, x_post_id));
+CREATE INDEX publications_account_date ON published_posts(account_id, published_at);
+CREATE TABLE metric_snapshots (id TEXT PRIMARY KEY, published_post_id TEXT NOT NULL REFERENCES published_posts(id) ON DELETE CASCADE, provider TEXT NOT NULL, provider_updated_at TEXT, observed_at TEXT NOT NULL, metrics_json TEXT NOT NULL, missing_fields_json TEXT NOT NULL, post_age_hours REAL NOT NULL, ingestion_key TEXT NOT NULL, UNIQUE(published_post_id, provider, ingestion_key));
+CREATE INDEX snapshots_post_date ON metric_snapshots(published_post_id, observed_at);
+CREATE TABLE research_sources (id TEXT PRIMARY KEY, draft_id TEXT NOT NULL REFERENCES drafts(id) ON DELETE CASCADE, provider TEXT NOT NULL, kind TEXT NOT NULL, source_url TEXT NOT NULL, claim TEXT NOT NULL, verification TEXT NOT NULL, retrieved_at TEXT NOT NULL, published_at TEXT);
+CREATE TABLE learning_summaries (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, cohort_key TEXT NOT NULL, window_hours INTEGER NOT NULL, sample_size INTEGER NOT NULL, summary_json TEXT NOT NULL, algorithm_version TEXT NOT NULL, computed_at TEXT NOT NULL, stale INTEGER NOT NULL DEFAULT 0, UNIQUE(owner_id, cohort_key, window_hours));
+CREATE TABLE usage_events (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, request_id TEXT NOT NULL, tool_name TEXT NOT NULL, provider TEXT, status TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0, cost_units REAL, created_at TEXT NOT NULL);
+CREATE INDEX usage_owner_date ON usage_events(owner_id, created_at);
+CREATE TABLE request_locks (owner_id TEXT NOT NULL, request_key TEXT NOT NULL, expires_at TEXT NOT NULL, PRIMARY KEY(owner_id, request_key));

@@ -1,0 +1,35 @@
+{
+  "name": "x-content-intelligence-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src tests",
+    "format": "prettier --write src tests migrations '*.json' '*.jsonc' '*.ts' README.md",
+    "db:migrate": "wrangler d1 migrations apply x-content-bank --local",
+    "db:migrate:remote": "wrangler d1 migrations apply x-content-bank --remote"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.4.0",
+    "agents": "0.33.0",
+    "twitter-text": "^3.1.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "latest",
+    "@cloudflare/workers-types": "latest",
+    "@eslint/js": "^9.39.0",
+    "@types/twitter-text": "^3.1.10",
+    "eslint": "^9.39.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^4.1.0",
+    "wrangler": "latest"
+  }
+}
