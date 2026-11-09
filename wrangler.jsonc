@@ -8,13 +8,12 @@
   "vars": { "OPENAI_MODEL": "gpt-4.1-mini", "DAILY_TOOL_LIMIT": "100" },
   "d1_databases": [
     {
-      "binding": "DB",
+      "binding": "x_content_bank",
       "database_name": "x-content-bank",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "migrations",
-    },
+      "database_id": "9ce89efa-aba7-43e9-9230-bcb7c8b5faf0"
+    }
   ],
   "kv_namespaces": [
-    { "binding": "RESEARCH_CACHE", "id": "00000000000000000000000000000000" },
+    { "binding": "RESEARCH_CACHE", "id": "501cc3bf110147228cea8a2171bc9928" },
   ],
 }
